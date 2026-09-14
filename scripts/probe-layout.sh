@@ -78,10 +78,15 @@ if [ ! -f "$HEADER" ]; then
     exit 1
 fi
 
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) INCLUDE_PATH="$(cygpath -m "$HEADER")" ;;
+    *)                    INCLUDE_PATH="$HEADER" ;;
+esac
+
 {
     echo '#include <stdio.h>'
     echo '#include <stddef.h>'
-    echo "#include \"$HEADER\""
+    echo "#include \"$INCLUDE_PATH\""
     echo 'int main(void) {'
     printf '%s\n' "$TYPES" | while read -r cname c3name; do
         [ -z "$cname" ] && continue
@@ -93,7 +98,7 @@ fi
 
 case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)
-        (cd "$WORK" && MSYS2_ARG_CONV_EXCL="*" cl -nologo -std:c11 -Fe:probe.exe probe.c > /dev/null)
+        (cd "$WORK" && MSYS2_ARG_CONV_EXCL="*" cl -nologo -std:c11 -Fe:probe.exe probe.c)
         PROBE="$WORK/probe.exe"
         ;;
     *)
