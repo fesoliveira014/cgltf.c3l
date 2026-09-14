@@ -1,0 +1,6 @@
+This package compiles cgltf, by Johannes Kuhlmann, from the git submodule under
+vendor/cgltf (tag v1.15). cgltf is licensed under the MIT License; its full text is
+vendor/cgltf/LICENSE. cgltf embeds jsmn, by Serge Zaitsev, also MIT-licensed; that
+notice is inside vendor/cgltf/cgltf.h.
+
+The C3 binding itself (src/, csrc/, scripts/, test/) is MIT-licensed; see LICENSE.

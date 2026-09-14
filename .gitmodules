@@ -1,0 +1,3 @@
+[submodule "vendor/cgltf"]
+	path = vendor/cgltf
+	url = https://github.com/jkuhlmann/cgltf

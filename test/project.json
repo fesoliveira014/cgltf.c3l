@@ -1,0 +1,12 @@
+{
+  "langrev": "1",
+  "dependency-search-paths": [ "libs" ],
+  "dependencies": [ "cgltf" ],
+  "output": "build",
+  "targets": {
+    "smoke": {
+      "type": "executable",
+      "sources": [ "src/**" ]
+    }
+  }
+}

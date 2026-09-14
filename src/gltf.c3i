@@ -1,0 +1,755 @@
+module gltf;
+
+<* Function that allocates for the parser. *>
+alias AllocFn = fn void* (void* user, usz size);
+
+<* Function that releases a parser allocation. *>
+alias FreeFn = fn void (void* user, void* ptr);
+
+<* Function that reads a whole file for the parser. *>
+alias ReadFn = fn Result (MemoryOptions* memory, FileOptions* file, ZString path, usz* size, void** data);
+
+<* Function that releases a file read by ReadFn. *>
+alias ReleaseFn = fn void (MemoryOptions* memory, FileOptions* file, void* data);
+
+<* Texel filter; GL enumerant values. *>
+typedef FilterType = int;
+
+<* Coordinate wrap; GL enumerant values. *>
+typedef WrapMode = int;
+
+<* No filter named; the consumer picks. *>
+const FilterType FILTER_UNDEFINED = (FilterType)0;
+<* GL_NEAREST. *>
+const FilterType FILTER_NEAREST = (FilterType)9728;
+<* GL_LINEAR. *>
+const FilterType FILTER_LINEAR = (FilterType)9729;
+<* GL_NEAREST_MIPMAP_NEAREST. *>
+const FilterType FILTER_NEAREST_MIPMAP_NEAREST = (FilterType)9984;
+<* GL_LINEAR_MIPMAP_NEAREST. *>
+const FilterType FILTER_LINEAR_MIPMAP_NEAREST = (FilterType)9985;
+<* GL_NEAREST_MIPMAP_LINEAR. *>
+const FilterType FILTER_NEAREST_MIPMAP_LINEAR = (FilterType)9986;
+<* GL_LINEAR_MIPMAP_LINEAR. *>
+const FilterType FILTER_LINEAR_MIPMAP_LINEAR = (FilterType)9987;
+
+<* GL_CLAMP_TO_EDGE. *>
+const WrapMode WRAP_CLAMP_TO_EDGE = (WrapMode)33071;
+<* GL_MIRRORED_REPEAT. *>
+const WrapMode WRAP_MIRRORED_REPEAT = (WrapMode)33648;
+<* GL_REPEAT. *>
+const WrapMode WRAP_REPEAT = (WrapMode)10497;
+
+<* Container format of a document; INVALID means detect. *>
+enum FileType : int {
+    INVALID,
+    GLTF,
+    GLB,
+    MAX_ENUM,
+}
+
+<* Status of a parser call. *>
+enum Result : int {
+    SUCCESS,
+    DATA_TOO_SHORT,
+    UNKNOWN_FORMAT,
+    INVALID_JSON,
+    INVALID_GLTF,
+    INVALID_OPTIONS,
+    FILE_NOT_FOUND,
+    IO_ERROR,
+    OUT_OF_MEMORY,
+    LEGACY_GLTF,
+    MAX_ENUM,
+}
+
+<* Declared target of a buffer view. *>
+enum BufferViewType : int {
+    INVALID,
+    INDICES,
+    VERTICES,
+    MAX_ENUM,
+}
+
+<* Semantic of a vertex attribute. *>
+enum AttributeType : int {
+    INVALID,
+    POSITION,
+    NORMAL,
+    TANGENT,
+    TEXCOORD,
+    COLOR,
+    JOINTS,
+    WEIGHTS,
+    CUSTOM,
+    MAX_ENUM,
+}
+
+<* Scalar component type of an accessor. *>
+enum ComponentType : int {
+    INVALID,
+    R_8,
+    R_8U,
+    R_16,
+    R_16U,
+    R_32U,
+    R_32F,
+    MAX_ENUM,
+}
+
+<* Element shape of an accessor. *>
+enum Type : int {
+    INVALID,
+    SCALAR,
+    VEC2,
+    VEC3,
+    VEC4,
+    MAT2,
+    MAT3,
+    MAT4,
+    MAX_ENUM,
+}
+
+<* Topology of a primitive. *>
+enum PrimitiveType : int {
+    INVALID,
+    POINTS,
+    LINES,
+    LINE_LOOP,
+    LINE_STRIP,
+    TRIANGLES,
+    TRIANGLE_STRIP,
+    TRIANGLE_FAN,
+    MAX_ENUM,
+}
+
+<* Alpha handling of a material. *>
+enum AlphaMode : int {
+    OPAQUE,
+    MASK,
+    BLEND,
+    MAX_ENUM,
+}
+
+<* Node property an animation channel drives. *>
+enum AnimationPathType : int {
+    INVALID,
+    TRANSLATION,
+    ROTATION,
+    SCALE,
+    WEIGHTS,
+    MAX_ENUM,
+}
+
+<* Key interpolation of an animation sampler. *>
+enum InterpolationType : int {
+    LINEAR,
+    STEP,
+    CUBIC_SPLINE,
+    MAX_ENUM,
+}
+
+<* Projection of a camera. *>
+enum CameraType : int {
+    INVALID,
+    PERSPECTIVE,
+    ORTHOGRAPHIC,
+    MAX_ENUM,
+}
+
+<* Emission shape of a punctual light. *>
+enum LightType : int {
+    INVALID,
+    DIRECTIONAL,
+    POINT,
+    SPOT,
+    MAX_ENUM,
+}
+
+<* How a loaded buffer is released by free. *>
+enum DataFreeMethod : int {
+    NONE,
+    FILE_RELEASE,
+    MEMORY_FREE,
+    MAX_ENUM,
+}
+
+<* Meshopt stream kind. *>
+enum MeshoptCompressionMode : int {
+    INVALID,
+    ATTRIBUTES,
+    TRIANGLES,
+    INDICES,
+    MAX_ENUM,
+}
+
+<* Meshopt decode filter. *>
+enum MeshoptCompressionFilter : int {
+    NONE,
+    OCTAHEDRAL,
+    QUATERNION,
+    EXPONENTIAL,
+    MAX_ENUM,
+}
+
+<* Allocator hooks used by the parser; null selects the C runtime. *>
+struct MemoryOptions {
+    AllocFn alloc_func;
+    FreeFn  free_func;
+    void*   user_data;
+}
+
+<* File hooks used by the parser; null selects stdio. *>
+struct FileOptions {
+    ReadFn    read;
+    ReleaseFn release;
+    void*     user_data;
+}
+
+<* Parser configuration; the zero value selects every default. *>
+struct Options {
+    FileType      type;
+    usz           json_token_count;
+    MemoryOptions memory;
+    FileOptions   file;
+}
+
+<* Raw JSON of an extras object. *>
+struct Extras {
+    usz     start_offset;
+    usz     end_offset;
+    ZString data;
+}
+
+<* Unparsed extension by name. *>
+struct Extension {
+    ZString name;
+    ZString data;
+}
+
+<* Binary blob, loaded on demand. *>
+struct Buffer {
+    ZString        name;
+    usz            size;
+    ZString        uri;
+    void*          data;
+    DataFreeMethod data_free_method;
+    Extras         extras;
+    usz            extensions_count;
+    Extension*     extensions;
+}
+
+<* Meshopt-compressed stream description. *>
+struct MeshoptCompression {
+    Buffer*                  buffer;
+    usz                      offset;
+    usz                      size;
+    usz                      stride;
+    usz                      count;
+    MeshoptCompressionMode   mode;
+    MeshoptCompressionFilter filter;
+}
+
+<* Byte range of a buffer. *>
+struct BufferView {
+    ZString            name;
+    Buffer*            buffer;
+    usz                offset;
+    usz                size;
+    usz                stride;
+    BufferViewType     type;
+    void*              data;
+    int                has_meshopt_compression;
+    MeshoptCompression meshopt_compression;
+    Extras             extras;
+    usz                extensions_count;
+    Extension*         extensions;
+}
+
+<* Sparse substitution of an accessor. *>
+struct AccessorSparse {
+    usz           count;
+    BufferView*   indices_buffer_view;
+    usz           indices_byte_offset;
+    ComponentType indices_component_type;
+    BufferView*   values_buffer_view;
+    usz           values_byte_offset;
+}
+
+<* Typed view of elements in a buffer view. *>
+struct Accessor {
+    ZString        name;
+    ComponentType  component_type;
+    int            normalized;
+    Type           type;
+    usz            offset;
+    usz            count;
+    usz            stride;
+    BufferView*    buffer_view;
+    int            has_min;
+    float[16]      min;
+    int            has_max;
+    float[16]      max;
+    int            is_sparse;
+    AccessorSparse sparse;
+    Extras         extras;
+    usz            extensions_count;
+    Extension*     extensions;
+}
+
+<* Named vertex stream of a primitive. *>
+struct Attribute {
+    ZString       name;
+    AttributeType type;
+    int           index;
+    Accessor*     data;
+}
+
+<* Image source by URI or buffer view. *>
+struct Image {
+    ZString     name;
+    ZString     uri;
+    BufferView* buffer_view;
+    ZString     mime_type;
+    Extras      extras;
+    usz         extensions_count;
+    Extension*  extensions;
+}
+
+<* Filter and wrap of a texture. *>
+struct Sampler {
+    ZString    name;
+    FilterType mag_filter;
+    FilterType min_filter;
+    WrapMode   wrap_s;
+    WrapMode   wrap_t;
+    Extras     extras;
+    usz        extensions_count;
+    Extension* extensions;
+}
+
+<* Image and sampler pair; alternate encodings by extension. *>
+struct Texture {
+    ZString    name;
+    Image*     image;
+    Sampler*   sampler;
+    int        has_basisu;
+    Image*     basisu_image;
+    int        has_webp;
+    Image*     webp_image;
+    Extras     extras;
+    usz        extensions_count;
+    Extension* extensions;
+}
+
+<* KHR_texture_transform of one texture reference. *>
+struct TextureTransform {
+    float[2] offset;
+    float    rotation;
+    float[2] scale;
+    int      has_texcoord;
+    int      texcoord;
+}
+
+<* Texture reference of a material slot. *>
+struct TextureView {
+    Texture*         texture;
+    int              texcoord;
+    float            scale;
+    int              has_transform;
+    TextureTransform transform;
+}
+
+<* Core metallic-roughness parameters. *>
+struct PbrMetallicRoughness {
+    TextureView base_color_texture;
+    TextureView metallic_roughness_texture;
+    float[4]    base_color_factor;
+    float       metallic_factor;
+    float       roughness_factor;
+}
+
+<* KHR_materials_pbrSpecularGlossiness parameters. *>
+struct PbrSpecularGlossiness {
+    TextureView diffuse_texture;
+    TextureView specular_glossiness_texture;
+    float[4]    diffuse_factor;
+    float[3]    specular_factor;
+    float       glossiness_factor;
+}
+
+<* KHR_materials_clearcoat parameters. *>
+struct Clearcoat {
+    TextureView clearcoat_texture;
+    TextureView clearcoat_roughness_texture;
+    TextureView clearcoat_normal_texture;
+    float       clearcoat_factor;
+    float       clearcoat_roughness_factor;
+}
+
+<* KHR_materials_transmission parameters. *>
+struct Transmission {
+    TextureView transmission_texture;
+    float       transmission_factor;
+}
+
+<* KHR_materials_ior parameters. *>
+struct Ior {
+    float ior;
+}
+
+<* KHR_materials_specular parameters. *>
+struct Specular {
+    TextureView specular_texture;
+    TextureView specular_color_texture;
+    float[3]    specular_color_factor;
+    float       specular_factor;
+}
+
+<* KHR_materials_volume parameters. *>
+struct Volume {
+    TextureView thickness_texture;
+    float       thickness_factor;
+    float[3]    attenuation_color;
+    float       attenuation_distance;
+}
+
+<* KHR_materials_sheen parameters. *>
+struct Sheen {
+    TextureView sheen_color_texture;
+    float[3]    sheen_color_factor;
+    TextureView sheen_roughness_texture;
+    float       sheen_roughness_factor;
+}
+
+<* KHR_materials_emissive_strength parameters. *>
+struct EmissiveStrength {
+    float emissive_strength;
+}
+
+<* KHR_materials_iridescence parameters. *>
+struct Iridescence {
+    float       iridescence_factor;
+    TextureView iridescence_texture;
+    float       iridescence_ior;
+    float       iridescence_thickness_min;
+    float       iridescence_thickness_max;
+    TextureView iridescence_thickness_texture;
+}
+
+<* KHR_materials_diffuse_transmission parameters. *>
+struct DiffuseTransmission {
+    TextureView diffuse_transmission_texture;
+    float       diffuse_transmission_factor;
+    float[3]    diffuse_transmission_color_factor;
+    TextureView diffuse_transmission_color_texture;
+}
+
+<* KHR_materials_anisotropy parameters. *>
+struct Anisotropy {
+    float       anisotropy_strength;
+    float       anisotropy_rotation;
+    TextureView anisotropy_texture;
+}
+
+<* KHR_materials_dispersion parameters. *>
+struct Dispersion {
+    float dispersion;
+}
+
+<* Material with every extension block; has_* flags mark presence. *>
+struct Material {
+    ZString               name;
+    int                   has_pbr_metallic_roughness;
+    int                   has_pbr_specular_glossiness;
+    int                   has_clearcoat;
+    int                   has_transmission;
+    int                   has_volume;
+    int                   has_ior;
+    int                   has_specular;
+    int                   has_sheen;
+    int                   has_emissive_strength;
+    int                   has_iridescence;
+    int                   has_diffuse_transmission;
+    int                   has_anisotropy;
+    int                   has_dispersion;
+    PbrMetallicRoughness  pbr_metallic_roughness;
+    PbrSpecularGlossiness pbr_specular_glossiness;
+    Clearcoat             clearcoat;
+    Ior                   ior;
+    Specular              specular;
+    Sheen                 sheen;
+    Transmission          transmission;
+    Volume                volume;
+    EmissiveStrength      emissive_strength;
+    Iridescence           iridescence;
+    DiffuseTransmission   diffuse_transmission;
+    Anisotropy            anisotropy;
+    Dispersion            dispersion;
+    TextureView           normal_texture;
+    TextureView           occlusion_texture;
+    TextureView           emissive_texture;
+    float[3]              emissive_factor;
+    AlphaMode             alpha_mode;
+    float                 alpha_cutoff;
+    int                   double_sided;
+    int                   unlit;
+    Extras                extras;
+    usz                   extensions_count;
+    Extension*            extensions;
+}
+
+<* KHR_materials_variants mapping of a primitive. *>
+struct MaterialMapping {
+    usz       variant;
+    Material* material;
+    Extras    extras;
+}
+
+<* Attribute deltas of one morph target. *>
+struct MorphTarget {
+    Attribute[] attributes;
+}
+
+<* KHR_draco_mesh_compression description of a primitive. *>
+struct DracoMeshCompression {
+    BufferView* buffer_view;
+    Attribute[] attributes;
+}
+
+<* EXT_mesh_gpu_instancing streams of a node. *>
+struct MeshGpuInstancing {
+    Attribute[] attributes;
+}
+
+<* One drawable of a mesh. *>
+struct Primitive {
+    PrimitiveType        type;
+    Accessor*            indices;
+    Material*            material;
+    Attribute[]          attributes;
+    MorphTarget[]        targets;
+    Extras               extras;
+    int                  has_draco_mesh_compression;
+    DracoMeshCompression draco_mesh_compression;
+    MaterialMapping[]    mappings;
+    usz                  extensions_count;
+    Extension*           extensions;
+}
+
+<* Primitives sharing morph weights and target names. *>
+struct Mesh {
+    ZString      name;
+    Primitive[]  primitives;
+    float[]      weights;
+    ZString[]    target_names;
+    Extras       extras;
+    usz          extensions_count;
+    Extension*   extensions;
+}
+
+<* Joints and inverse bind matrices of a skinned mesh. *>
+struct Skin {
+    ZString    name;
+    Node*[]    joints;
+    Node*      skeleton;
+    Accessor*  inverse_bind_matrices;
+    Extras     extras;
+    usz        extensions_count;
+    Extension* extensions;
+}
+
+<* Perspective lens parameters. *>
+struct CameraPerspective {
+    int    has_aspect_ratio;
+    float  aspect_ratio;
+    float  yfov;
+    int    has_zfar;
+    float  zfar;
+    float  znear;
+    Extras extras;
+}
+
+<* Orthographic lens parameters. *>
+struct CameraOrthographic {
+    float  xmag;
+    float  ymag;
+    float  zfar;
+    float  znear;
+    Extras extras;
+}
+
+<* Camera whose type selects the lens member. *>
+struct Camera {
+    ZString    name;
+    CameraType type;
+    union {
+        CameraPerspective  perspective;
+        CameraOrthographic orthographic;
+    }
+    Extras     extras;
+    usz        extensions_count;
+    Extension* extensions;
+}
+
+<* KHR_lights_punctual light. *>
+struct Light {
+    ZString   name;
+    float[3]  color;
+    float     intensity;
+    LightType type;
+    float     range;
+    float     spot_inner_cone_angle;
+    float     spot_outer_cone_angle;
+    Extras    extras;
+}
+
+<* Hierarchy node with its optional attachments. *>
+struct Node {
+    ZString           name;
+    Node*             parent;
+    Node*[]           children;
+    Skin*             skin;
+    Mesh*             mesh;
+    Camera*           camera;
+    Light*            light;
+    float[]           weights;
+    int               has_translation;
+    int               has_rotation;
+    int               has_scale;
+    int               has_matrix;
+    float[3]          translation;
+    float[4]          rotation;
+    float[3]          scale;
+    float[16]         matrix;
+    Extras            extras;
+    int               has_mesh_gpu_instancing;
+    MeshGpuInstancing mesh_gpu_instancing;
+    usz               extensions_count;
+    Extension*        extensions;
+}
+
+<* Root nodes of one scene. *>
+struct Scene {
+    ZString    name;
+    Node*[]    nodes;
+    Extras     extras;
+    usz        extensions_count;
+    Extension* extensions;
+}
+
+<* Keyframe times and values of an animation. *>
+struct AnimationSampler {
+    Accessor*         input;
+    Accessor*         output;
+    InterpolationType interpolation;
+    Extras            extras;
+    usz               extensions_count;
+    Extension*        extensions;
+}
+
+<* Sampler bound to one node property. *>
+struct AnimationChannel {
+    AnimationSampler* sampler;
+    Node*             target_node;
+    AnimationPathType target_path;
+    Extras            extras;
+    usz               extensions_count;
+    Extension*        extensions;
+}
+
+<* Named set of samplers and channels. *>
+struct Animation {
+    ZString            name;
+    AnimationSampler[] samplers;
+    AnimationChannel[] channels;
+    Extras             extras;
+    usz                extensions_count;
+    Extension*         extensions;
+}
+
+<* KHR_materials_variants entry. *>
+struct MaterialVariant {
+    ZString name;
+    Extras  extras;
+}
+
+<* Document metadata. *>
+struct Asset {
+    ZString    copyright;
+    ZString    generator;
+    ZString    version;
+    ZString    min_version;
+    Extras     extras;
+    usz        extensions_count;
+    Extension* extensions;
+}
+
+<* Parsed document; owned until free. *>
+struct Data {
+    FileType          file_type;
+    void*             file_data;
+    Asset             asset;
+    Mesh[]            meshes;
+    Material[]        materials;
+    Accessor[]        accessors;
+    BufferView[]      buffer_views;
+    Buffer[]          buffers;
+    Image[]           images;
+    Texture[]         textures;
+    Sampler[]         samplers;
+    Skin[]            skins;
+    Camera[]          cameras;
+    Light[]           lights;
+    Node[]            nodes;
+    Scene[]           scenes;
+    Scene*            scene;
+    Animation[]       animations;
+    MaterialVariant[] variants;
+    Extras            extras;
+    usz               data_extensions_count;
+    Extension*        data_extensions;
+    ZString[]         extensions_used;
+    ZString[]         extensions_required;
+    char[]            json;
+    char[]            bin;
+    MemoryOptions     memory;
+    FileOptions       file;
+}
+
+extern fn Result parse_raw(Options* options, void* data, usz size, Data** out_data) @cname("cgltf_parse");
+extern fn Result parse_file_raw(Options* options, ZString path, Data** out_data) @cname("cgltf_parse_file");
+extern fn Result load_buffers_raw(Options* options, Data* data, ZString gltf_path) @cname("cgltf_load_buffers");
+extern fn Result load_buffer_base64_raw(Options* options, usz size, ZString base64, void** out_data) @cname("cgltf_load_buffer_base64");
+extern fn usz decode_string(ZString string) @cname("cgltf_decode_string");
+extern fn usz decode_uri(ZString uri) @cname("cgltf_decode_uri");
+extern fn Result validate_raw(Data* data) @cname("cgltf_validate");
+extern fn void free(Data* data) @cname("cgltf_free");
+extern fn void node_transform_local_raw(Node* node, float* out_matrix) @cname("cgltf_node_transform_local");
+extern fn void node_transform_world_raw(Node* node, float* out_matrix) @cname("cgltf_node_transform_world");
+extern fn char* buffer_view_data_raw(BufferView* view) @cname("cgltf_buffer_view_data");
+extern fn Accessor* find_accessor_raw(Primitive* primitive, AttributeType type, int index) @cname("cgltf_find_accessor");
+extern fn int accessor_read_float_raw(Accessor* accessor, usz index, float* out, usz element_size) @cname("cgltf_accessor_read_float");
+extern fn int accessor_read_uint_raw(Accessor* accessor, usz index, uint* out, usz element_size) @cname("cgltf_accessor_read_uint");
+extern fn usz accessor_read_index(Accessor* accessor, usz index) @cname("cgltf_accessor_read_index");
+extern fn usz num_components(Type type) @cname("cgltf_num_components");
+extern fn usz component_size(ComponentType component_type) @cname("cgltf_component_size");
+extern fn usz calc_size(Type type, ComponentType component_type) @cname("cgltf_calc_size");
+extern fn usz accessor_unpack_floats_raw(Accessor* accessor, float* out, usz float_count) @cname("cgltf_accessor_unpack_floats");
+extern fn usz accessor_unpack_indices_raw(Accessor* accessor, void* out, usz out_component_size, usz index_count) @cname("cgltf_accessor_unpack_indices");
+extern fn usz mesh_index(Data* data, Mesh* object) @cname("cgltf_mesh_index");
+extern fn usz material_index(Data* data, Material* object) @cname("cgltf_material_index");
+extern fn usz accessor_index(Data* data, Accessor* object) @cname("cgltf_accessor_index");
+extern fn usz buffer_view_index(Data* data, BufferView* object) @cname("cgltf_buffer_view_index");
+extern fn usz buffer_index(Data* data, Buffer* object) @cname("cgltf_buffer_index");
+extern fn usz image_index(Data* data, Image* object) @cname("cgltf_image_index");
+extern fn usz texture_index(Data* data, Texture* object) @cname("cgltf_texture_index");
+extern fn usz sampler_index(Data* data, Sampler* object) @cname("cgltf_sampler_index");
+extern fn usz skin_index(Data* data, Skin* object) @cname("cgltf_skin_index");
+extern fn usz camera_index(Data* data, Camera* object) @cname("cgltf_camera_index");
+extern fn usz light_index(Data* data, Light* object) @cname("cgltf_light_index");
+extern fn usz node_index(Data* data, Node* object) @cname("cgltf_node_index");
+extern fn usz scene_index(Data* data, Scene* object) @cname("cgltf_scene_index");
+extern fn usz animation_index(Data* data, Animation* object) @cname("cgltf_animation_index");
+extern fn usz animation_sampler_index(Animation* animation, AnimationSampler* object) @cname("cgltf_animation_sampler_index");
+extern fn usz animation_channel_index(Animation* animation, AnimationChannel* object) @cname("cgltf_animation_channel_index");
