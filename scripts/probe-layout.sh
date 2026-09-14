@@ -93,7 +93,7 @@ fi
 
 case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)
-        (cd "$WORK" && cl /nologo /std:c11 /Fe:probe.exe probe.c > /dev/null)
+        (cd "$WORK" && MSYS2_ARG_CONV_EXCL="*" cl -nologo -std:c11 -Fe:probe.exe probe.c > /dev/null)
         PROBE="$WORK/probe.exe"
         ;;
     *)
