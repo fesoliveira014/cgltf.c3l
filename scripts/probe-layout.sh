@@ -107,7 +107,7 @@ case "$(uname -s)" in
         ;;
 esac
 
-"$PROBE" > "$WORK/sizes.txt"
+"$PROBE" | tr -d "\r" > "$WORK/sizes.txt"
 
 generate_layout() {
     echo 'module gltf;'
