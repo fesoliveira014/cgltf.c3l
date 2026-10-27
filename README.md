@@ -1,7 +1,7 @@
 # cgltf.c3l
 
 C3 bindings for [cgltf](https://github.com/jkuhlmann/cgltf), a single-header glTF 2.0 parser
-written in C. Module `gltf`, package `cgltf`, C3 0.8.3.
+written in C. Module `gltf`, package `cgltf`, C3 0.8.5_1.
 
 The binding is C3-first. `src/gltf.c3i` mirrors every public cgltf type layout-exact, with
 adjacent pointer-and-count pairs declared as C3 slices, and declares every C function with
